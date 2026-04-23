@@ -6,3 +6,9 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Firebase & Applet Config (Sensitive/Internal)
+firebase-applet-config.json
+firebase-blueprint.json
+DRAFT_firestore.rules
+firestore.rules.test.ts
