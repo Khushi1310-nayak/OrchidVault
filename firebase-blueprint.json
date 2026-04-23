@@ -1,0 +1,92 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "avatar": { "type": "string" },
+        "displayName": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email", "createdAt", "updatedAt"]
+    },
+    "Album": {
+      "title": "Album",
+      "description": "A user's music album",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "coverImage": { "type": "string" },
+        "isDeleted": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "title", "isDeleted", "createdAt", "updatedAt"]
+    },
+    "Song": {
+      "title": "Song",
+      "description": "A song within an album",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "fileUrl": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "fileUrl", "createdAt", "updatedAt"]
+    },
+    "Folder": {
+      "title": "Folder",
+      "description": "A folder for storing files",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "isDeleted": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "name", "isDeleted", "createdAt", "updatedAt"]
+    },
+    "FileRecord": {
+      "title": "FileRecord",
+      "description": "A PDF file stored in a folder",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "fileUrl": { "type": "string" },
+        "colorTag": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "fileUrl", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "User profiles"
+    },
+    "/albums/{albumId}": {
+      "schema": { "$ref": "#/entities/Album" },
+      "description": "Albums created by users"
+    },
+    "/albums/{albumId}/songs/{songId}": {
+      "schema": { "$ref": "#/entities/Song" },
+      "description": "Songs within an album"
+    },
+    "/folders/{folderId}": {
+      "schema": { "$ref": "#/entities/Folder" },
+      "description": "Folders created by users"
+    },
+    "/folders/{folderId}/files/{fileId}": {
+      "schema": { "$ref": "#/entities/FileRecord" },
+      "description": "Files within a folder"
+    }
+  }
+}

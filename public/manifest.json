@@ -1,0 +1,21 @@
+{
+  "name": "OrchidVault",
+  "short_name": "Orchid",
+  "description": "Your personal focus sanctuary for study and music",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0F0B1A",
+  "theme_color": "#8870A3",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

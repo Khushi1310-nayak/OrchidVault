@@ -1,0 +1,122 @@
+import { create } from 'zustand';
+import { Track } from './usePlayer';
+import { apiFetch } from '../lib/api';
+
+export interface AlbumItem {
+  id: string; // Mapped from _id internally
+  _id?: string;
+  name: string;
+  title?: string;
+  description?: string;
+  coverUrl?: string;
+  cover?: string;
+  tracks: Track[];
+  songs?: any[];
+  createdAt: number;
+}
+
+interface MusicState {
+  albums: AlbumItem[];
+  loading: boolean;
+  fetchAlbums: () => Promise<void>;
+  addAlbum: (name: string, description?: string, coverUrl?: string) => Promise<void>;
+  deleteAlbum: (id: string) => Promise<void>;
+  updateAlbum: (id: string, updates: Partial<AlbumItem>) => void;
+  addTrackToAlbum: (albumId: string, track: Track) => Promise<void>;
+  deleteTrack: (albumId: string, trackId: string) => void;
+  renameTrack: (albumId: string, trackId: string, newTitle: string) => void;
+}
+
+const mapMongoAlbum = (doc: any) => {
+  if (!doc) return doc;
+  // Normalize naming differences between UI models and backend
+  if (doc._id) doc.id = doc._id;
+  if (doc.title && !doc.name) doc.name = doc.title;
+  if (doc.cover && !doc.coverUrl) doc.coverUrl = doc.cover;
+  
+  doc.tracks = (doc.songs || []).map((s: any) => ({
+    id: s._id || s.id,
+    title: s.title,
+    artist: doc.name,
+    url: s.url,
+    duration: s.duration || '0:00',
+    coverUrl: doc.coverUrl || doc.cover
+  }));
+  return doc;
+};
+
+export const useMusic = create<MusicState>((set, get) => ({
+  albums: [],
+  loading: false,
+
+  fetchAlbums: async () => {
+    set({ loading: true });
+    try {
+      const albums = await apiFetch('/albums');
+      set({ albums: albums.map(mapMongoAlbum), loading: false });
+    } catch (e) {
+      console.error("Failed to fetch albums", e);
+      set({ loading: false });
+    }
+  },
+
+  addAlbum: async (name, description, coverUrl) => {
+    // Send using backend fields map
+    const newAlbum = await apiFetch('/albums', {
+      method: "POST",
+      body: JSON.stringify({ 
+        title: name, 
+        description: description || 'No description provided.', 
+        cover: coverUrl || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?q=80&w=600&auto=format&fit=crop'
+      })
+    });
+    set((state) => ({ albums: [...state.albums, mapMongoAlbum(newAlbum)] }));
+  },
+
+  deleteAlbum: async (id) => {
+    await apiFetch(`/albums/${id}`, { method: "DELETE" });
+    set((state) => ({ albums: state.albums.filter((a) => a.id !== id) }));
+  },
+
+  // Note: Backend doesn't have partial update route yet, doing locally
+  updateAlbum: (id, updates) => set((state) => ({
+    albums: state.albums.map(a => a.id === id ? { ...a, ...updates } : a)
+  })),
+
+  addTrackToAlbum: async (albumId, track) => {
+    await apiFetch(`/albums/${albumId}/song`, {
+      method: "POST",
+      body: JSON.stringify({ title: track.title, url: track.url })
+    });
+    await get().fetchAlbums();
+  },
+
+  deleteTrack: async (albumId, trackId) => {
+    try {
+      await apiFetch(`/albums/${albumId}/song/${trackId}`, { method: "DELETE" });
+      set((state) => ({
+        albums: state.albums.map(a => 
+          a.id === albumId ? { ...a, tracks: a.tracks.filter(t => t.id !== trackId) } : a
+        )
+      }));
+    } catch (e) {
+      console.error("Failed to delete track", e);
+    }
+  },
+
+  renameTrack: async (albumId, trackId, newTitle) => {
+    try {
+      await apiFetch(`/albums/${albumId}/song/${trackId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ title: newTitle })
+      });
+      set((state) => ({
+        albums: state.albums.map(a =>
+          a.id === albumId ? { ...a, tracks: a.tracks.map(t => t.id === trackId ? { ...t, title: newTitle } : t) } : a
+        )
+      }));
+    } catch (e) {
+      console.error("Failed to rename track", e);
+    }
+  },
+}));

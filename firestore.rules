@@ -1,0 +1,184 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isAdmin() { return false; } // No admin concept
+
+    function isAuthenticated() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+
+    function stringIs(val, min, max) {
+      return val is string && val.size() >= min && val.size() <= max;
+    }
+
+    function isValidUser(data) {
+      let keys = data.keys();
+      return keys.hasAll(['email', 'createdAt', 'updatedAt']) 
+        && data.size() >= 3 && data.size() <= 6
+        && stringIs(data.email, 3, 100)
+        && (keys.hasAny(['avatar']) ? stringIs(data.avatar, 0, 500) : true)
+        && (keys.hasAny(['displayName']) ? stringIs(data.displayName, 0, 50) : true)
+        && (keys.hasAny(['theme']) ? stringIs(data.theme, 0, 50) : true)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAlbum(data) {
+      let keys = data.keys();
+      return keys.hasAll(['userId', 'title', 'isDeleted', 'createdAt', 'updatedAt'])
+        && data.size() >= 5 && data.size() <= 7
+        && stringIs(data.userId, 1, 128) && data.userId == request.auth.uid
+        && stringIs(data.title, 1, 100)
+        && (keys.hasAny(['description']) ? stringIs(data.description, 0, 500) : true)
+        && (keys.hasAny(['coverImage']) ? stringIs(data.coverImage, 0, 500) : true)
+        && data.isDeleted is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidSong(data) {
+      let keys = data.keys();
+      return keys.hasAll(['title', 'fileUrl', 'createdAt', 'updatedAt'])
+        && data.size() == 4
+        && stringIs(data.title, 1, 100)
+        && stringIs(data.fileUrl, 1, 500)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidFolder(data) {
+      let keys = data.keys();
+      return keys.hasAll(['userId', 'name', 'isDeleted', 'createdAt', 'updatedAt'])
+        && data.size() == 5
+        && stringIs(data.userId, 1, 128) && data.userId == request.auth.uid
+        && stringIs(data.name, 1, 100)
+        && data.isDeleted is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidFileRecord(data) {
+      let keys = data.keys();
+      return keys.hasAll(['name', 'fileUrl', 'createdAt', 'updatedAt'])
+        && data.size() >= 4 && data.size() <= 5
+        && stringIs(data.name, 1, 200)
+        && stringIs(data.fileUrl, 1, 500)
+        && (keys.hasAny(['colorTag']) ? stringIs(data.colorTag, 0, 50) : true)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    match /users/{userId} {
+      allow get: if isOwner(userId) && isValidId(userId);
+      allow list: if false; // Users shouldn't list users unless it's a social app; and we don't have user.userId so we can't query by it yet securely. Actually, they only ever need to get their own.
+      allow create: if isOwner(userId) && isValidId(userId)
+        && isValidUser(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isOwner(userId) && isValidId(userId)
+        && isValidUser(incoming())
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().email == existing().email
+        && incoming().diff(existing()).affectedKeys().hasOnly(['avatar', 'displayName', 'theme', 'updatedAt']);
+      allow delete: if false;
+    }
+
+    match /albums/{albumId} {
+      allow get: if isAuthenticated() && isValidId(albumId) && existing().userId == request.auth.uid;
+      allow list: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow create: if isAuthenticated() && isValidId(albumId)
+        && isValidAlbum(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && incoming().isDeleted == false;
+      allow update: if isAuthenticated() && isValidId(albumId)
+        && existing().userId == request.auth.uid
+        && isValidAlbum(incoming())
+        && incoming().userId == existing().userId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          (incoming().diff(existing()).affectedKeys().hasOnly(['title', 'description', 'coverImage', 'updatedAt'])) ||
+          (incoming().diff(existing()).affectedKeys().hasOnly(['isDeleted', 'updatedAt']))
+        );
+      allow delete: if isAuthenticated() && isValidId(albumId) && existing().userId == request.auth.uid;
+    }
+
+    match /albums/{albumId}/songs/{songId} {
+      allow get: if isAuthenticated() && isValidId(albumId) && isValidId(songId)
+        && get(/databases/$(database)/documents/albums/$(albumId)).data.userId == request.auth.uid;
+      allow list: if isAuthenticated() && isValidId(albumId)
+        && get(/databases/$(database)/documents/albums/$(albumId)).data.userId == request.auth.uid;
+      allow create: if isAuthenticated() && isValidId(albumId) && isValidId(songId)
+        && get(/databases/$(database)/documents/albums/$(albumId)).data.userId == request.auth.uid
+        && isValidSong(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isAuthenticated() && isValidId(albumId) && isValidId(songId)
+        && get(/databases/$(database)/documents/albums/$(albumId)).data.userId == request.auth.uid
+        && isValidSong(incoming())
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'fileUrl', 'updatedAt']);
+      allow delete: if isAuthenticated() && isValidId(albumId) && isValidId(songId)
+        && get(/databases/$(database)/documents/albums/$(albumId)).data.userId == request.auth.uid;
+    }
+
+    match /folders/{folderId} {
+      allow get: if isAuthenticated() && isValidId(folderId) && existing().userId == request.auth.uid;
+      allow list: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow create: if isAuthenticated() && isValidId(folderId)
+        && isValidFolder(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && incoming().isDeleted == false;
+      allow update: if isAuthenticated() && isValidId(folderId)
+        && existing().userId == request.auth.uid
+        && isValidFolder(incoming())
+        && incoming().userId == existing().userId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          (incoming().diff(existing()).affectedKeys().hasOnly(['name', 'updatedAt'])) ||
+          (incoming().diff(existing()).affectedKeys().hasOnly(['isDeleted', 'updatedAt']))
+        );
+      allow delete: if isAuthenticated() && isValidId(folderId) && existing().userId == request.auth.uid;
+    }
+
+    match /folders/{folderId}/files/{fileId} {
+      allow get: if isAuthenticated() && isValidId(folderId) && isValidId(fileId)
+        && get(/databases/$(database)/documents/folders/$(folderId)).data.userId == request.auth.uid;
+      allow list: if isAuthenticated() && isValidId(folderId)
+        && get(/databases/$(database)/documents/folders/$(folderId)).data.userId == request.auth.uid;
+      allow create: if isAuthenticated() && isValidId(folderId) && isValidId(fileId)
+        && get(/databases/$(database)/documents/folders/$(folderId)).data.userId == request.auth.uid
+        && isValidFileRecord(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isAuthenticated() && isValidId(folderId) && isValidId(fileId)
+        && get(/databases/$(database)/documents/folders/$(folderId)).data.userId == request.auth.uid
+        && isValidFileRecord(incoming())
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'fileUrl', 'colorTag', 'updatedAt']);
+      allow delete: if isAuthenticated() && isValidId(folderId) && isValidId(fileId)
+        && get(/databases/$(database)/documents/folders/$(folderId)).data.userId == request.auth.uid;
+    }
+  }
+}
