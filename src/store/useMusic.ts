@@ -21,7 +21,7 @@ interface MusicState {
   fetchAlbums: () => Promise<void>;
   addAlbum: (name: string, description?: string, coverUrl?: string) => Promise<void>;
   deleteAlbum: (id: string) => Promise<void>;
-  updateAlbum: (id: string, updates: Partial<AlbumItem>) => void;
+  updateAlbum: (id: string, updates: Partial<AlbumItem>) => Promise<void>;
   addTrackToAlbum: (albumId: string, track: Track) => Promise<void>;
   deleteTrack: (albumId: string, trackId: string) => void;
   renameTrack: (albumId: string, trackId: string, newTitle: string) => void;
@@ -83,10 +83,22 @@ export const useMusic = create<MusicState>((set, get) => ({
     }
   },
 
-  // Note: Backend doesn't have partial update route yet, doing locally
-  updateAlbum: (id, updates) => set((state) => ({
-    albums: state.albums.map(a => a.id === id ? { ...a, ...updates } : a)
-  })),
+  // Note: Backend now has a partial update route
+  updateAlbum: async (id, updates) => {
+    // Optimistic update
+    set((state) => ({
+      albums: state.albums.map(a => a.id === id ? { ...a, ...updates } : a)
+    }));
+    try {
+      await apiFetch(`/albums/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(updates)
+      });
+    } catch (e) {
+      console.error("Failed to update album", e);
+      // We could revert optimistic update here, but user can refresh for now
+    }
+  },
 
   addTrackToAlbum: async (albumId, track) => {
     await apiFetch(`/albums/${albumId}/song`, {

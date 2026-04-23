@@ -14,7 +14,8 @@ export default function MusicPlaylistPage() {
   const { addToTrash } = useTrash();
   const { playTrack, currentTrack, isPlaying } = usePlayer();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const coverInputRef = useRef<HTMLInputElement>(null);
+  const newAlbumCoverInputRef = useRef<HTMLInputElement>(null);
+  const editAlbumCoverInputRef = useRef<HTMLInputElement>(null);
 
   const [activeAlbumId, setActiveAlbumId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -72,13 +73,23 @@ export default function MusicPlaylistPage() {
 
   const handleFileUploadToCloud = async (file: File, folder: string) => {
     try {
+      // First try Firebase Storage
       const storageRef = ref(storage, `${folder}/${Date.now()}_${file.name}`);
       const snapshot = await uploadBytes(storageRef, file);
       const url = await getDownloadURL(snapshot.ref);
       return url;
     } catch (err) {
-      console.error('Cloud upload failed, using local URL:', err);
-      return URL.createObjectURL(file);
+      console.warn('Cloud upload failed, falling back to Base64 encode:', err);
+      // Fallback: Convert image to Base64 data URI to persist in MongoDB
+      // This ensures images load across reloads even if Firebase Storage fails.
+      return new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          resolve(reader.result as string);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
     }
   };
 
@@ -420,7 +431,7 @@ export default function MusicPlaylistPage() {
         <form onSubmit={handleCreateAlbum} className="space-y-4">
           <div className="flex gap-4 items-center mb-2">
             <div 
-              onClick={() => coverInputRef.current?.click()}
+              onClick={() => newAlbumCoverInputRef.current?.click()}
               className="w-24 h-24 rounded-xl overflow-hidden relative group border border-white/10 shrink-0 bg-black/20 flex items-center justify-center cursor-pointer hover:border-plum-blossom/50 transition-colors"
             >
                {newAlbumCover ? (
@@ -431,7 +442,7 @@ export default function MusicPlaylistPage() {
                    <span className="text-[10px] mt-1">Add Cover</span>
                  </div>
                )}
-               <input type="file" ref={coverInputRef} onChange={handleNewAlbumCoverSelect} accept="image/*" className="hidden" />
+               <input type="file" ref={newAlbumCoverInputRef} onChange={handleNewAlbumCoverSelect} accept="image/*" className="hidden" />
             </div>
             <div className="flex-1 text-sm text-silver-wisteria/70">
                Choose a cover image for your sanctuary.
@@ -477,7 +488,7 @@ export default function MusicPlaylistPage() {
             <div className="w-24 h-24 rounded-xl overflow-hidden relative group border border-white/10 shrink-0">
                <img src={editAlbumConfirm?.coverUrl} className="w-full h-full object-cover" alt="cover" />
                <div 
-                 onClick={() => coverInputRef.current?.click()}
+                 onClick={() => editAlbumCoverInputRef.current?.click()}
                  className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center cursor-pointer"
                >
                  {uploadingCover ? (
@@ -486,7 +497,7 @@ export default function MusicPlaylistPage() {
                    <><ImageIcon size={20} className="text-white mb-1" /><span className="text-[10px] text-white">Change</span></>
                  )}
                </div>
-               <input type="file" ref={coverInputRef} onChange={handleCoverUpload} accept="image/*" className="hidden" />
+               <input type="file" ref={editAlbumCoverInputRef} onChange={handleCoverUpload} accept="image/*" className="hidden" />
             </div>
             <div className="flex-1 text-sm text-silver-wisteria/70">
                Click the cover image to upload a new one. Ideal size: 500x500px.

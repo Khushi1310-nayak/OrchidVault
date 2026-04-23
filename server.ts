@@ -12,7 +12,8 @@ async function startServer() {
   const PORT = 3000;
 
   app.use(cors());
-  app.use(express.json());
+  app.use(express.json({ limit: '50mb' }));
+  app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
   // Initialize Firebase Admin with explicit projectId to verify tokens correctly
   try {
@@ -113,14 +114,17 @@ async function startServer() {
   // --- ROUTES ---
   app.get("/api/user", verifyToken, async (req: any, res: any) => {
     try {
-      let user = await User.findOne({ uid: req.user.uid });
-      if (!user) {
-        user = await User.create({ 
-          uid: req.user.uid, 
-          email: req.user.email,
-          name: req.user.name || req.user.email?.split('@')[0] || 'Sanctuary User'
-        });
-      }
+      const user = await User.findOneAndUpdate(
+        { uid: req.user.uid },
+        {
+          $setOnInsert: {
+            uid: req.user.uid,
+            email: req.user.email,
+            name: req.user.name || req.user.email?.split('@')[0] || 'Sanctuary User'
+          }
+        },
+        { new: true, upsert: true }
+      );
       res.json(user);
     } catch (err) {
       console.error("Error in GET /api/user:", err);
@@ -131,15 +135,18 @@ async function startServer() {
   app.post("/api/user", verifyToken, async (req: any, res: any) => {
     const { uid, email, name, picture } = req.user;
     try {
-      let user = await User.findOne({ uid });
-      if (!user) {
-        user = await User.create({ 
-          uid, 
-          email, 
-          name: name || email?.split('@')[0] || 'Sanctuary User',
-          avatar: picture || ''
-        });
-      }
+      const user = await User.findOneAndUpdate(
+        { uid },
+        {
+          $setOnInsert: {
+            uid,
+            email,
+            name: name || email?.split('@')[0] || 'Sanctuary User',
+            avatar: picture || ''
+          }
+        },
+        { new: true, upsert: true }
+      );
       res.json(user);
     } catch (err) {
       console.error("Error in POST /api/user:", err);
@@ -249,6 +256,18 @@ async function startServer() {
   app.get("/api/albums", verifyToken, async (req: any, res: any) => {
     const albums = await Album.find({ userId: req.user.uid, isDeleted: false });
     res.json(albums);
+  });
+
+  app.patch("/api/albums/:id", verifyToken, async (req: any, res: any) => {
+    const album = await Album.findById(req.params.id);
+    if (!album) return res.status(404).send();
+    // Only allow updating title, description, and cover
+    if (req.body.name) album.title = req.body.name; // Frontend uses name, backend uses title
+    if (req.body.title) album.title = req.body.title;
+    if (req.body.description !== undefined) album.description = req.body.description;
+    if (req.body.coverUrl) album.cover = req.body.coverUrl;
+    await album.save();
+    res.json(album);
   });
 
   app.post("/api/albums/:id/song", verifyToken, async (req: any, res: any) => {

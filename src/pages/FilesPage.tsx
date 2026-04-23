@@ -102,12 +102,21 @@ export default function FilesPage() {
     try {
       let url = '';
       try {
+        // First try Firebase Storage
         const storageRef = ref(storage, `vault-files/${Date.now()}_${file.name}`);
         const snapshot = await uploadBytes(storageRef, file);
         url = await getDownloadURL(snapshot.ref);
       } catch (err) {
-        console.error('Cloud upload failed, using local URL fallback:', err);
-        url = URL.createObjectURL(file);
+        console.warn('Cloud upload failed, falling back to Base64 encode:', err);
+        // Fallback: Convert file to Base64 data URI to persist in MongoDB
+        url = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            resolve(reader.result as string);
+          };
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
       }
       
       addFileToFolder(targetFolderId, {

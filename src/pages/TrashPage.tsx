@@ -107,7 +107,7 @@ export default function TrashPage() {
           </div>
         ) : (
           <motion.div layout className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-[var(--grid-gap)]">
-            <AnimatePresence>
+            <AnimatePresence mode="popLayout">
               {filteredItems.map(item => (
                 <TrashCard key={item.id} item={item} onRestore={() => handleRestore(item.id)} onDelete={() => permanentlyDelete(item.id)} />
               ))}
@@ -133,9 +133,9 @@ const TrashCard: React.FC<{ item: any; onRestore: () => void; onDelete: () => Pr
   return (
     <motion.div 
       layout
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
+      initial={{ opacity: 0, scale: 0.8 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.8, transition: { duration: 0.2 } }}
       className="bg-[var(--card-bg)] border border-[var(--border)] rounded-xl p-[var(--list-padding)] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 sm:gap-0 hover:scale-[1.02] hover:bg-[var(--bg-primary)] hover:border-[var(--danger)]/30 hover:shadow-[0_0_20px_var(--shadow-color)] transition-all group duration-300"
     >
       <div className="flex items-center gap-4 overflow-hidden w-full sm:w-auto">
