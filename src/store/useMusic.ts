@@ -61,21 +61,26 @@ export const useMusic = create<MusicState>((set, get) => ({
   },
 
   addAlbum: async (name, description, coverUrl) => {
-    // Send using backend fields map
     const newAlbum = await apiFetch('/albums', {
       method: "POST",
       body: JSON.stringify({ 
         title: name, 
         description: description || 'No description provided.', 
-        cover: coverUrl || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?q=80&w=600&auto=format&fit=crop'
+        cover: coverUrl || '' // No default cover, user provides it
       })
     });
     set((state) => ({ albums: [...state.albums, mapMongoAlbum(newAlbum)] }));
   },
 
   deleteAlbum: async (id) => {
-    await apiFetch(`/albums/${id}`, { method: "DELETE" });
-    set((state) => ({ albums: state.albums.filter((a) => a.id !== id) }));
+    if (get().loading) return;
+    set({ loading: true });
+    try {
+      await apiFetch(`/albums/${id}`, { method: "DELETE" });
+      set((state) => ({ albums: state.albums.filter((a) => a.id !== id), loading: false }));
+    } catch (e) {
+      set({ loading: false });
+    }
   },
 
   // Note: Backend doesn't have partial update route yet, doing locally

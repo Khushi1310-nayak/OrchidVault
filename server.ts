@@ -47,14 +47,14 @@ async function startServer() {
 
   // --- MODELS ---
   const userSchema = new mongoose.Schema({
-    uid: String,
+    uid: { type: String, required: true, unique: true },
     email: String,
     name: String,
     avatar: String,
     settings: {
       theme: { type: String, default: "dark" },
-      accent: String,
-      notifications: Boolean,
+      accent: { type: String, default: "#8870A3" },
+      notifications: { type: Boolean, default: true },
     },
   });
   const User = mongoose.models.User || mongoose.model<any>("User", userSchema);
@@ -112,50 +112,84 @@ async function startServer() {
 
   // --- ROUTES ---
   app.get("/api/user", verifyToken, async (req: any, res: any) => {
-    const user = await User.findOne({ uid: req.user.uid });
-    if (!user) return res.status(404).json({ error: "User not found" });
-    res.json(user);
+    try {
+      let user = await User.findOne({ uid: req.user.uid });
+      if (!user) {
+        user = await User.create({ 
+          uid: req.user.uid, 
+          email: req.user.email,
+          name: req.user.name || req.user.email?.split('@')[0] || 'Sanctuary User'
+        });
+      }
+      res.json(user);
+    } catch (err) {
+      console.error("Error in GET /api/user:", err);
+      res.status(500).json({ error: "Server error" });
+    }
   });
 
   app.post("/api/user", verifyToken, async (req: any, res: any) => {
-    const { uid, email } = req.user;
-    let user = await User.findOne({ uid });
-    if (!user) {
-      user = await User.create({ uid, email });
+    const { uid, email, name, picture } = req.user;
+    try {
+      let user = await User.findOne({ uid });
+      if (!user) {
+        user = await User.create({ 
+          uid, 
+          email, 
+          name: name || email?.split('@')[0] || 'Sanctuary User',
+          avatar: picture || ''
+        });
+      }
+      res.json(user);
+    } catch (err) {
+      console.error("Error in POST /api/user:", err);
+      res.status(500).json({ error: "Server error" });
     }
-    res.json(user);
   });
 
   app.put("/api/user/profile", verifyToken, async (req: any, res: any) => {
-    const user = await User.findOneAndUpdate(
-      { uid: req.user.uid },
-      { $set: req.body },
-      { new: true, upsert: true }
-    );
-    res.json(user);
+    try {
+      const user = await User.findOneAndUpdate(
+        { uid: req.user.uid },
+        { $set: req.body },
+        { new: true, upsert: true }
+      );
+      res.json(user);
+    } catch (err) {
+      res.status(500).json({ error: "Server error" });
+    }
   });
 
   app.delete("/api/user", verifyToken, async (req: any, res: any) => {
-    await User.findOneAndDelete({ uid: req.user.uid });
-    // Cleanup other data belonging to user
-    await Folder.deleteMany({ userId: req.user.uid });
-    await Album.deleteMany({ userId: req.user.uid });
-    await Trash.deleteMany({ userId: req.user.uid });
-    res.json({ message: 'User data deleted' });
+    try {
+      await User.findOneAndDelete({ uid: req.user.uid });
+      // Cleanup other data belonging to user
+      await Folder.deleteMany({ userId: req.user.uid });
+      await Album.deleteMany({ userId: req.user.uid });
+      await Trash.deleteMany({ userId: req.user.uid });
+      await Activity.deleteMany({ userId: req.user.uid });
+      res.json({ message: 'User data deleted' });
+    } catch (err) {
+      res.status(500).json({ error: "Server error" });
+    }
   });
 
   app.put("/api/user/settings", verifyToken, async (req: any, res: any) => {
-    const user = await User.findOneAndUpdate(
-      { uid: req.user.uid },
-      { settings: req.body },
-      { new: true }
-    );
-    res.json(user);
+    try {
+      const user = await User.findOneAndUpdate(
+        { uid: req.user.uid },
+        { $set: { settings: req.body } },
+        { new: true, upsert: true }
+      );
+      res.json(user);
+    } catch (err) {
+      res.status(500).json({ error: "Server error" });
+    }
   });
 
   // Folders
   app.post("/api/folders", verifyToken, async (req: any, res: any) => {
-    const folder = await Folder.create({ userId: req.user.uid, name: req.body.name });
+    const folder = await Folder.create({ userId: req.user.uid, name: req.body.name, color: req.body.color });
     res.json(folder);
   });
 
@@ -193,8 +227,14 @@ async function startServer() {
 
   app.delete("/api/folders/:id", verifyToken, async (req: any, res: any) => {
     const folder = await Folder.findById(req.params.id);
-    if (!folder) return res.status(404).send();
-    await Trash.create({ userId: req.user.uid, type: "folder", data: folder, deletedAt: new Date() });
+    if (!folder || folder.isDeleted) return res.status(404).json({ error: "Folder not found or already deleted" });
+    
+    // Check if entry already exists in trash to avoid duplication
+    const existsInTrash = await Trash.findOne({ userId: req.user.uid, "data._id": folder._id });
+    if (!existsInTrash) {
+      await Trash.create({ userId: req.user.uid, type: "folder", data: folder, deletedAt: new Date() });
+    }
+    
     folder.isDeleted = true;
     await folder.save();
     res.json({ message: "Moved to trash" });
@@ -239,8 +279,13 @@ async function startServer() {
 
   app.delete("/api/albums/:id", verifyToken, async (req: any, res: any) => {
     const album = await Album.findById(req.params.id);
-    if (!album) return res.status(404).send();
-    await Trash.create({ userId: req.user.uid, type: "album", data: album, deletedAt: new Date() });
+    if (!album || album.isDeleted) return res.status(404).json({ error: "Album not found or already deleted" });
+    
+    const existsInTrash = await Trash.findOne({ userId: req.user.uid, "data._id": album._id });
+    if (!existsInTrash) {
+      await Trash.create({ userId: req.user.uid, type: "album", data: album, deletedAt: new Date() });
+    }
+    
     album.isDeleted = true;
     await album.save();
     res.json({ message: "Moved to trash" });
@@ -250,6 +295,26 @@ async function startServer() {
   app.get("/api/trash", verifyToken, async (req: any, res: any) => {
     const items = await Trash.find({ userId: req.user.uid });
     res.json(items);
+  });
+
+  app.delete("/api/trash/all", verifyToken, async (req: any, res: any) => {
+    const items = await Trash.find({ userId: req.user.uid });
+    for (const item of items) {
+      if (item.type === 'folder') await Folder.deleteOne({ _id: item.data._id });
+      if (item.type === 'album') await Album.deleteOne({ _id: item.data._id });
+    }
+    await Trash.deleteMany({ userId: req.user.uid });
+    res.json({ message: 'Trash emptied' });
+  });
+
+  app.post("/api/trash/restore-all", verifyToken, async (req: any, res: any) => {
+    const items = await Trash.find({ userId: req.user.uid });
+    for (const item of items) {
+      if (item.type === 'folder') await Folder.findOneAndUpdate({ _id: item.data._id }, { isDeleted: false });
+      if (item.type === 'album') await Album.findOneAndUpdate({ _id: item.data._id }, { isDeleted: false });
+    }
+    await Trash.deleteMany({ userId: req.user.uid });
+    res.json({ message: 'All items restored' });
   });
 
   app.get("/api/db-health", async (req, res) => {
@@ -265,14 +330,23 @@ async function startServer() {
   app.post("/api/trash/restore/:id", verifyToken, async (req: any, res: any) => {
     const item = await Trash.findById(req.params.id);
     if (!item) return res.status(404).send();
-    if (item.type === "folder") await Folder.create(item.data);
-    if (item.type === "album") await Album.create(item.data);
+    if (item.type === "folder") {
+      await Folder.findOneAndUpdate({ _id: item.data._id }, { isDeleted: false }, { upsert: true });
+    }
+    if (item.type === "album") {
+      await Album.findOneAndUpdate({ _id: item.data._id }, { isDeleted: false }, { upsert: true });
+    }
     await item.deleteOne();
     res.json({ message: "Restored" });
   });
 
   app.delete("/api/trash/:id", verifyToken, async (req: any, res: any) => {
-    await Trash.findByIdAndDelete(req.params.id);
+    const item = await Trash.findById(req.params.id);
+    if (!item) return res.status(404).send();
+    // permanently delete the original document too
+    if (item.type === 'folder') await Folder.deleteOne({ _id: item.data._id });
+    if (item.type === 'album') await Album.deleteOne({ _id: item.data._id });
+    await item.deleteOne();
     res.json({ message: "Deleted permanently" });
   });
 

@@ -17,7 +17,8 @@ interface TrashState {
   addToTrash: (item: TrashItem) => void;
   restore: (id: string) => Promise<void>;
   permanentlyDelete: (id: string) => Promise<void>;
-  emptyTrash: () => void;
+  emptyTrash: () => Promise<void>;
+  restoreAll: () => Promise<void>;
 }
 
 const mapMongoTrash = (doc: any) => {
@@ -30,7 +31,7 @@ const mapMongoTrash = (doc: any) => {
   return doc;
 };
 
-export const useTrash = create<TrashState>((set) => ({
+export const useTrash = create<TrashState>((set, get) => ({
   items: [],
   loading: false,
 
@@ -50,18 +51,52 @@ export const useTrash = create<TrashState>((set) => ({
   })),
 
   restore: async (id) => {
-    await apiFetch(`/trash/restore/${id}`, { method: "POST" });
-    set((state) => ({
-      items: state.items.filter((i) => i.id !== id)
-    }));
+    if (get().loading) return;
+    set({ loading: true });
+    try {
+      await apiFetch(`/trash/restore/${id}`, { method: "POST" });
+      set((state) => ({
+        items: state.items.filter((i) => i.id !== id),
+        loading: false
+      }));
+    } catch (e) {
+      set({ loading: false });
+    }
   },
 
   permanentlyDelete: async (id) => {
-    await apiFetch(`/trash/${id}`, { method: "DELETE" });
-    set((state) => ({
-      items: state.items.filter((i) => i.id !== id)
-    }));
+    if (get().loading) return;
+    set({ loading: true });
+    try {
+      await apiFetch(`/trash/${id}`, { method: "DELETE" });
+      set((state) => ({
+        items: state.items.filter((i) => i.id !== id),
+        loading: false
+      }));
+    } catch (e) {
+      set({ loading: false });
+    }
   },
 
-  emptyTrash: () => set({ items: [] })
+  emptyTrash: async () => {
+    if (get().loading) return;
+    set({ loading: true });
+    try {
+      await apiFetch('/trash/all', { method: 'DELETE' });
+      set({ items: [], loading: false });
+    } catch (e) {
+      set({ loading: false });
+    }
+  },
+
+  restoreAll: async () => {
+    if (get().loading) return;
+    set({ loading: true });
+    try {
+      await apiFetch('/trash/restore-all', { method: 'POST' });
+      set({ items: [], loading: false });
+    } catch (e) {
+      set({ loading: false });
+    }
+  }
 }));

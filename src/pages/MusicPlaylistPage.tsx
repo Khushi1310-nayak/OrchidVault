@@ -45,14 +45,40 @@ export default function MusicPlaylistPage() {
     e.preventDefault();
     if (newAlbumName.trim()) {
       try {
-        await addAlbum(newAlbumName.trim(), newAlbumDesc.trim());
+        await addAlbum(newAlbumName.trim(), newAlbumDesc.trim(), newAlbumCover);
         toast.success("Album saved ✨");
+        setNewAlbumName('');
+        setNewAlbumDesc('');
+        setNewAlbumCover('');
+        setIsNewAlbumModalOpen(false);
       } catch(err) {
         toast.error("Failed to create album");
       }
-      setNewAlbumName('');
-      setNewAlbumDesc('');
-      setIsNewAlbumModalOpen(false);
+    }
+  };
+
+  const [newAlbumCover, setNewAlbumCover] = useState('');
+
+  const handleNewAlbumCoverSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const url = await handleFileUploadToCloud(file, 'album-covers');
+      setNewAlbumCover(url);
+    } catch (err) {
+      console.error('Cover preview failed:', err);
+    }
+  };
+
+  const handleFileUploadToCloud = async (file: File, folder: string) => {
+    try {
+      const storageRef = ref(storage, `${folder}/${Date.now()}_${file.name}`);
+      const snapshot = await uploadBytes(storageRef, file);
+      const url = await getDownloadURL(snapshot.ref);
+      return url;
+    } catch (err) {
+      console.error('Cloud upload failed, using local URL:', err);
+      return URL.createObjectURL(file);
     }
   };
 
@@ -72,7 +98,7 @@ export default function MusicPlaylistPage() {
     if (!file || !editAlbumConfirm) return;
     setUploadingCover(true);
     try {
-      const url = URL.createObjectURL(file);
+      const url = await handleFileUploadToCloud(file, 'album-covers');
       updateAlbum(editAlbumConfirm.id, { coverUrl: url });
       setEditAlbumConfirm(prev => prev ? { ...prev, coverUrl: url } : null);
     } catch (err) {
@@ -113,24 +139,25 @@ export default function MusicPlaylistPage() {
     if (!file) return;
 
     if (albums.length === 0) {
-      addAlbum('My Uploads', 'My uploaded tracks');
+      await addAlbum('My Uploads', 'My uploaded tracks');
     }
     const targetAlbumId = activeAlbumId || albums[0]?.id || Date.now().toString();
 
     setUploading(true);
     try {
-      const url = URL.createObjectURL(file);
+      const url = await handleFileUploadToCloud(file, 'tracks');
 
-      addTrackToAlbum(targetAlbumId, {
+      await addTrackToAlbum(targetAlbumId, {
         id: Date.now().toString(),
         title: file.name.replace(/\.[^/.]+$/, ""),
         artist: 'Unknown Artist',
         url,
         coverUrl: albums.find(a => a.id === targetAlbumId)?.coverUrl
       });
+      toast.success("Track added to sanctuary 🎵");
     } catch (err) {
       console.error('Upload failed:', err);
-      alert('Upload failed. Check console for details.');
+      toast.error('Upload failed. Check console for details.');
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -391,6 +418,26 @@ export default function MusicPlaylistPage() {
       {/* New Album Modal */}
       <Modal isOpen={isNewAlbumModalOpen} onClose={() => setIsNewAlbumModalOpen(false)} title="New Album">
         <form onSubmit={handleCreateAlbum} className="space-y-4">
+          <div className="flex gap-4 items-center mb-2">
+            <div 
+              onClick={() => coverInputRef.current?.click()}
+              className="w-24 h-24 rounded-xl overflow-hidden relative group border border-white/10 shrink-0 bg-black/20 flex items-center justify-center cursor-pointer hover:border-plum-blossom/50 transition-colors"
+            >
+               {newAlbumCover ? (
+                 <img src={newAlbumCover} className="w-full h-full object-cover" alt="cover" />
+               ) : (
+                 <div className="flex flex-col items-center justify-center text-silver-wisteria/40">
+                   <ImageIcon size={24} />
+                   <span className="text-[10px] mt-1">Add Cover</span>
+                 </div>
+               )}
+               <input type="file" ref={coverInputRef} onChange={handleNewAlbumCoverSelect} accept="image/*" className="hidden" />
+            </div>
+            <div className="flex-1 text-sm text-silver-wisteria/70">
+               Choose a cover image for your sanctuary.
+            </div>
+          </div>
+
           <div className="space-y-2">
             <label className="text-sm text-silver-wisteria">Album Title</label>
             <input 

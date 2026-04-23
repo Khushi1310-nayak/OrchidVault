@@ -1,61 +1,32 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Trash2, RotateCcw, Folder, Music, FileText, LayoutGrid } from 'lucide-react';
 import { useTrash } from '../store/useTrash';
 import { useFiles } from '../store/useFiles';
 import { useMusic } from '../store/useMusic';
 import { motion, AnimatePresence } from 'framer-motion';
+import { cn } from '../lib/utils';
 
 export default function TrashPage() {
-  const { items, emptyTrash, permanentlyDelete, restore } = useTrash();
+  const { items, fetchTrash, emptyTrash, permanentlyDelete, restore, restoreAll, loading } = useTrash();
   const [filter, setFilter] = useState('all');
+  const { fetchFolders } = useFiles();
+  const { fetchAlbums } = useMusic();
 
-  const handleRestore = (item: any) => {
-    const { id, type, data } = item;
-    if (type === 'folder') {
-       useFiles.setState(state => ({ folders: [...state.folders, data] }));
-    } else if (type === 'album') {
-       useMusic.setState(state => ({ albums: [...state.albums, data] }));
-    } else if (type === 'file') {
-       if (data.folderId) {
-          useFiles.setState(state => {
-            const fIdx = state.folders.findIndex(f => f.id === data.folderId);
-            if (fIdx === -1) {
-               const rootExists = state.folders.find(f => f.name === 'Restored Files');
-               if(rootExists) {
-                  return { folders: state.folders.map(f => f.id === rootExists.id ? {...f, files: [...f.files, data]} : f) }
-               } else {
-                  return { folders: [...state.folders, { id: 'restored', name: 'Restored Files', files: [data], createdAt: Date.now() }] }
-               }
-            }
-            return {
-               folders: state.folders.map(f => f.id === data.folderId ? {...f, files: [...f.files, data]} : f)
-            };
-          })
-       }
-    } else if (type === 'track') {
-       if (data.albumId) {
-          useMusic.setState(state => {
-            const aIdx = state.albums.findIndex(a => a.id === data.albumId);
-            if (aIdx === -1) {
-               const rootExists = state.albums.find(a => a.name === 'Restored Tracks');
-               if(rootExists) {
-                  return { albums: state.albums.map(a => a.id === rootExists.id ? {...a, tracks: [...a.tracks, data]} : a) }
-               } else {
-                  return { albums: [...state.albums, { id: 'restored', name: 'Restored Tracks', description: 'Restored tracks', coverUrl: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?q=80&w=600&auto=format&fit=crop', tracks: [data], createdAt: Date.now() }] }
-               }
-            }
-            return {
-               albums: state.albums.map(a => a.id === data.albumId ? {...a, tracks: [...a.tracks, data]} : a)
-            };
-          })
-       }
-    }
-    restore(id);
+  useEffect(() => {
+    fetchTrash();
+  }, [fetchTrash]);
+
+  const handleRestore = async (id: string) => {
+    await restore(id);
+    // Re-fetch folders/albums to sync state
+    fetchFolders();
+    fetchAlbums();
   };
 
-  const handleRestoreAll = () => {
-    const currentItems = useTrash.getState().items;
-    currentItems.forEach(item => handleRestore(item));
+  const handleRestoreAll = async () => {
+    await restoreAll();
+    fetchFolders();
+    fetchAlbums();
   };
   
   const filteredItems = items.filter(item => 
@@ -79,17 +50,19 @@ export default function TrashPage() {
           <div className="flex gap-3 w-full md:w-auto">
             <button 
               onClick={handleRestoreAll}
-              className="flex-1 md:flex-none flex items-center justify-center gap-2 px-5 py-2.5 bg-green-500/10 border border-green-500/20 text-green-500 rounded-xl hover:bg-green-500/20 hover:border-green-500/30 transition-all font-medium"
+              disabled={loading}
+              className="flex-1 md:flex-none flex items-center justify-center gap-2 px-5 py-2.5 bg-green-500/10 border border-green-500/20 text-green-500 rounded-xl hover:bg-green-500/20 hover:border-green-500/30 transition-all font-medium disabled:opacity-50"
             >
-              <RotateCcw size={18} />
+              <RotateCcw size={18} className={loading ? "animate-spin" : ""} />
               Restore All
             </button>
             <button 
               onClick={emptyTrash}
-              className="flex-1 md:flex-none flex items-center justify-center gap-2 px-5 py-2.5 bg-[var(--danger)]/10 border border-[var(--danger)]/20 text-[var(--danger)] rounded-xl hover:bg-[var(--danger)]/20 hover:border-[var(--danger)]/40 transition-all font-medium hover:shadow-[0_0_15px_var(--danger)] group"
+              disabled={loading}
+              className="flex-1 md:flex-none flex items-center justify-center gap-2 px-5 py-2.5 bg-[var(--danger)]/10 border border-[var(--danger)]/20 text-[var(--danger)] rounded-xl hover:bg-[var(--danger)]/20 hover:border-[var(--danger)]/40 transition-all font-medium hover:shadow-[0_0_15px_var(--danger)] group disabled:opacity-50"
             >
-              <Trash2 size={18} className="group-hover:scale-110 transition-transform" />
-              Empty Trash
+              <Trash2 size={18} className={cn("group-hover:scale-110 transition-transform", loading && "animate-pulse")} />
+               Empty Trash
             </button>
           </div>
         )}
@@ -136,7 +109,7 @@ export default function TrashPage() {
           <motion.div layout className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-[var(--grid-gap)]">
             <AnimatePresence>
               {filteredItems.map(item => (
-                <TrashCard key={item.id} item={item} onRestore={() => handleRestore(item)} onDelete={() => permanentlyDelete(item.id)} />
+                <TrashCard key={item.id} item={item} onRestore={() => handleRestore(item.id)} onDelete={() => permanentlyDelete(item.id)} />
               ))}
             </AnimatePresence>
           </motion.div>

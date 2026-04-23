@@ -94,14 +94,21 @@ export default function FilesPage() {
     if (!file) return;
 
     if (folders.length === 0) {
-      addFolder('My Uploads');
+      await addFolder('My Uploads');
     }
     const targetFolderId = currentFolder ? currentFolder.id : (folders[0]?.id || Date.now().toString());
 
     setUploading(true);
     try {
-      // Use local Object URL instead of relying on unconfigured Firebase Storage bucket
-      const url = URL.createObjectURL(file);
+      let url = '';
+      try {
+        const storageRef = ref(storage, `vault-files/${Date.now()}_${file.name}`);
+        const snapshot = await uploadBytes(storageRef, file);
+        url = await getDownloadURL(snapshot.ref);
+      } catch (err) {
+        console.error('Cloud upload failed, using local URL fallback:', err);
+        url = URL.createObjectURL(file);
+      }
       
       addFileToFolder(targetFolderId, {
         id: Date.now().toString(),
@@ -112,9 +119,10 @@ export default function FilesPage() {
         color: COLORS[0]
       });
       logActivity({ filesAdded: 1 });
+      toast.success("File uploaded to vault 🔒");
     } catch (err) {
-      console.error('Upload failed:', err);
-      alert('Upload failed. Check console for details.');
+      console.error('Full upload process failed:', err);
+      toast.error('Upload failed. Please try again.');
     } finally {
       setUploading(false);
       if (e.target) e.target.value = ''; // Reset input

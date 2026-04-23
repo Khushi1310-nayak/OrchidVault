@@ -20,17 +20,27 @@ export default function MainLayout() {
   const { fetchSettings } = useSettings();
 
   useEffect(() => {
-    if (user) {
-      // Connect to backend user endpoint to ensure User document is synced
-      apiFetch('/user', { method: 'POST' }).catch(console.error);
+    const initUserData = async () => {
+      if (user) {
+        try {
+          // Connect to backend user endpoint to ensure User document is synced
+          await apiFetch('/user', { method: 'POST' });
+          
+          // Hydrate Zustand stores with backend data ONLY AFTER user is confirmed in DB
+          fetchFolders();
+          fetchAlbums();
+          fetchTrash();
+          fetchActivity();
+          fetchSettings();
+        } catch (err) {
+          console.error("User initialization failed:", err);
+          // If user exists in Firebase but failed to POST to Express, 
+          // subsequent fetches might fail with 404.
+        }
+      }
+    };
 
-      // Hydrate Zustand stores with backend data
-      fetchFolders();
-      fetchAlbums();
-      fetchTrash();
-      fetchActivity();
-      fetchSettings();
-    }
+    initUserData();
   }, [user]);
 
   if (loading) {
